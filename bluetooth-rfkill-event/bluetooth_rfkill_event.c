@@ -51,7 +51,9 @@
 
 enum patcher_type {
     PATCHER_BRCM_PATCHRAM_PLUS,
+    PATCHER_HCI_QCOMM_INIT,
     PATCHER_HCIATTACH,
+    PATCHER_HCIATTACH_NO_BTADDR,
     PATCHER_COUNT
 };
 
@@ -61,11 +63,15 @@ struct patcher_impl {
 };
 
 static void brcm_patchram_plus_cmdline();
+static void hci_qcomm_init_cmdline();
 static void hciattach_cmdline();
+static void hciattach_no_btaddr_cmdline();
 
 static const struct patcher_impl patcher_impl[PATCHER_COUNT] = {
-    { "brcm_patchram_plus", brcm_patchram_plus_cmdline },
-    { "hciattach",          hciattach_cmdline }
+    { "brcm_patchram_plus",     brcm_patchram_plus_cmdline },
+    { "hci_qcomm_init",         hci_qcomm_init_cmdline },
+    { "hciattach",              hciattach_cmdline },
+    { "hciattach_no_btaddr",    hciattach_no_btaddr_cmdline }
 };
 
 enum rfkill_switch_type {
@@ -890,6 +896,18 @@ void load_bd_add(void)
 
 }
 
+static void hci_qcomm_init_cmdline()
+{
+    char *cur = hciattach_options;
+    const char *end = hciattach_options + sizeof(hciattach_options);
+
+    cur += snprintf(cur, end-cur, " -d %s", main_opts.uart_dev);
+    /* In-Band Sleep not supported by default, need CONFIG_BT_HCIUART_IBS and hciattach 'qualcomm-ibs' type (blob default protocol number 5)*/
+    cur += snprintf(cur, end-cur, " %s", "--force_hw_sleep");
+    cur += snprintf(cur, end-cur, " -s %d", main_opts.baud_rate);
+
+}
+
 static void brcm_patchram_plus_cmdline()
 {
     char *cur = hciattach_options;
@@ -955,6 +973,21 @@ static void hciattach_cmdline()
     if (main_opts.set_tosleep)
         cur += snprintf(cur, end-cur, " %s", tosleep_value());
     cur += snprintf(cur, end-cur," %s", main_opts.bd_add);
+}
+
+static void hciattach_no_btaddr_cmdline()
+{
+    char *cur = hciattach_options;
+    const char *end = hciattach_options + sizeof(hciattach_options);
+
+    if (main_opts.no_flush) cur += snprintf(cur, end-cur, " -d");
+    if (main_opts.use_lpm)  cur += snprintf(cur, end-cur, " -m");
+    cur += snprintf(cur, end-cur, " %s", main_opts.uart_dev);
+    cur += snprintf(cur, end-cur, " %s", main_opts.type_id ? main_opts.type_id : HCIATTACH_TYPE_ID_DEFAULT);
+    cur += snprintf(cur, end-cur, " %d", main_opts.baud_rate);
+    cur += snprintf(cur, end-cur, " %s", main_opts.flow ? "flow" : "noflow");
+    if (main_opts.set_tosleep)
+        cur += snprintf(cur, end-cur, " %s", tosleep_value());
 }
 
 void read_config(char* file)
