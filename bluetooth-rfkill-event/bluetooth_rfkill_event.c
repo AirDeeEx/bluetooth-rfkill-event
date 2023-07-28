@@ -78,6 +78,7 @@ enum rfkill_switch_type {
 #define BCM_RFKILL_NAME "bcm43xx Bluetooth\n"
 #define BCM_43341_UART_DEV "/dev/ttyMFD0"
 #define BD_ADD_FACTORY_FILE "/factory/bluetooth_address"
+char pwr_rfkill_default_name[PATH_MAX] = BCM_RFKILL_NAME;
 char factory_bd_add[18];
 char default_bd_addr[18];
 
@@ -124,6 +125,10 @@ struct rfkill_switch {
     };
 };
 
+/* Patcher that runs before the main one; Doesn't start HCI by itself; Optional */
+char prepatcher[PATH_MAX];
+char prepatcher_options[PATH_MAX];
+
 /* HCI UART driver initialization utility; usually it takes care of FW patch download as well */
 char hciattach[PATH_MAX];
 char hciattach_options[PATH_MAX];
@@ -137,6 +142,11 @@ GHashTable *switch_hash = NULL; /* hash index to metadata about the switch */
 struct main_opts {
     /* which patcher binary to use; default to brcm_patchram_plus */
     int         patcher;
+    /* which pre-patcher binary to use; optional */
+    gboolean    use_prepatcher;
+    int         prepatcher;
+    /* name of power switch */
+    char*       pwr_rfkill_name;
     /* type or id of device */
     char*       type_id;
     /* 'fork' will keep running in background the hciattach utility; N/A if enable_hci is FALSE */
@@ -180,6 +190,8 @@ struct main_opts main_opts;
 
 static const char * const supported_options[] = {
     "patcher",
+    "prepatcher",
+    "pwr_rfkill_name",
     "type_id",
     "fork",
     "lpm",
@@ -524,11 +536,62 @@ out:
     return r;
 }
 
+static int exec_cmd(char *cmd) {
+    int r;
+
+    r = system_timeout(cmd);
+    DEBUG("executing cmd \"%s\" %s (%i)", cmd,
+         (WIFEXITED(r) && !WEXITSTATUS(r)) ? "succeeded" : "failed",WEXITSTATUS(r));
+
+    //if (!WIFEXITED(r) || WEXITSTATUS(r))
+        //FATAL("Failed to execute \"%s\", exiting", cmd);
+
+    return WEXITSTATUS(r);
+}
+
+static int find_pid(char *name) {
+    char cmd[PATH_MAX];
+
+    snprintf(cmd, sizeof(cmd), "pidof %s", name);
+    if(exec_cmd(cmd) == 0) {    //TODO better check
+        return 0;
+    } else {
+        INFO("No %s process to be found", hciattach);
+    }
+
+    return 1;
+}
+
+static int killall(char *name) {
+    char cmd[PATH_MAX];
+
+    snprintf(cmd, sizeof(cmd), RFKILL_HELPER_PATH "/killall-wait.sh %s", name);
+    if(exec_cmd(cmd) == 0) {    //TODO better check
+        return 0;
+    }
+
+    return 1;
+}
+
+static int find_patcher(char *name) {
+    unsigned i;
+    for (i = 0; i < PATCHER_COUNT; i++) {
+        if (!strcmp(name, patcher_impl[i].name)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 void init_config()
 {
     memset(&main_opts, 0, sizeof(main_opts));
 
     main_opts.patcher = PATCHER_BRCM_PATCHRAM_PLUS;
+    main_opts.prepatcher = -1;
+    main_opts.use_prepatcher = FALSE;
+    main_opts.pwr_rfkill_name = NULL;
     main_opts.type_id = NULL;
     main_opts.enable_fork = TRUE;
     main_opts.enable_lpm = TRUE;
@@ -619,12 +682,27 @@ void parse_config(GKeyFile *config)
     if (err) {
         g_clear_error(&err);
     } else {
-        unsigned i;
-        for (i = 0; i < PATCHER_COUNT; i++) {
-            if (!strcmp(str, patcher_impl[i].name)) {
-                main_opts.patcher = i;
-                break;
-            }
+        int n = find_patcher(str);
+        if(n > 0) {
+            main_opts.patcher = n;
+        } else {
+            ERROR("Unknown patcher '%s'",str);
+            g_free(str);
+            exit(EXIT_FAILURE);
+        }
+        g_free(str);
+    }
+
+    str = g_key_file_get_string(config, "General", "prepatcher", &err);
+    if (err) {
+        g_clear_error(&err);
+    } else {
+        int n = find_patcher(str);
+        if(n > 0) {
+            main_opts.prepatcher = n;
+            main_opts.use_prepatcher = TRUE;
+        } else {
+            WARN("Unknown pre-patcher '%s'",str);
         }
         g_free(str);
     }
@@ -720,6 +798,15 @@ void parse_config(GKeyFile *config)
     } else {
         g_free(main_opts.type_id);
         main_opts.type_id = str;
+    }
+
+    str = g_key_file_get_string(config, "General", "pwr_rfkill_name", &err);
+    if (err) {
+        g_clear_error(&err);
+        main_opts.pwr_rfkill_name = pwr_rfkill_default_name;
+    } else {
+        g_free(main_opts.pwr_rfkill_name);
+        main_opts.pwr_rfkill_name = str;
     }
 
     val = g_key_file_get_integer(config, "General", "flow", &err);
@@ -884,6 +971,11 @@ void read_config(char* file)
     parse_config(config);
     load_bd_add();
 
+    if(main_opts.use_prepatcher) {
+        patcher_impl[main_opts.prepatcher].generate_cmdline();
+        strcpy(prepatcher_options, hciattach_options);
+    }
+
     patcher_impl[main_opts.patcher].generate_cmdline();
     if (config)
         g_key_file_unref(config);
@@ -891,39 +983,42 @@ void read_config(char* file)
 
 void free_hci()
 {
-    char cmd[PATH_MAX * 2];
-    int r;
-
     DEBUG("");
 
-    snprintf(cmd, sizeof(cmd), "pidof %s", hciattach);
 
-    r = system_timeout(cmd);
-    if (WIFEXITED(r) && !WEXITSTATUS(r)) {
-        snprintf(cmd, sizeof(cmd), RFKILL_HELPER_PATH "/killall-wait.sh %s", hciattach);
-        r = system_timeout(cmd);
-        INFO("killing %s %s", hciattach,
-             (WIFEXITED(r) && !WEXITSTATUS(r)) ? "succeeded" : "failed");
-    } else {
-        INFO("No %s process to be found", hciattach);
+    if (find_pid(hciattach)) {
+        INFO("killing patcher '%s' %s", hciattach,
+             (killall(hciattach)) ? "succeeded" : "failed");
+    }
+
+    if(main_opts.use_prepatcher) {
+        if (find_pid(prepatcher)) {
+            INFO("killing prepatcher '%s' %s", prepatcher,
+                (killall(prepatcher)) ? "succeeded" : "failed");
+        }
     }
 }
 
 void attach_hci()
 {
     char hci_execute[PATH_MAX * 2];
-    int r;
+    int ret;
 
     DEBUG("");
 
+    if(main_opts.use_prepatcher) {
+        char prepatcher_execute[PATH_MAX * 2];
+
+        snprintf(prepatcher_execute, sizeof(hci_execute), "%s %s", prepatcher, prepatcher_options);
+        ret = exec_cmd(prepatcher_execute);
+
+        INFO("starting pre-patcher '%s' %s", prepatcher, (!ret) ? "succeeded" : "failed");
+    }
+
     snprintf(hci_execute, sizeof(hci_execute), "%s %s", hciattach, hciattach_options);
+    ret = exec_cmd(hci_execute);
 
-    r = system_timeout(hci_execute);
-    INFO("executing %s %s", hci_execute,
-         (WIFEXITED(r) && !WEXITSTATUS(r)) ? "succeeded" : "failed");
-
-    if (!WIFEXITED(r) || WEXITSTATUS(r))
-        FATAL("Failed to execute %s, exiting", hci_execute);
+    INFO("starting patcher '%s' %s", hciattach, (!ret) ? "succeeded" : "failed");
 
     /* remember if hci device has been registered (in case conf file is changed) */
     hci_dev_registered = main_opts.enable_hci;
@@ -1054,27 +1149,31 @@ static int rfkill_switch_add(struct rfkill_event *event)
 
     fd_name = open(sysname, O_RDONLY);
     if (fd_name < 0) {
-	WARN("Failed to open rfkill name (%s/%d)", strerror(errno), errno);
-	goto out;
+        WARN("Failed to open rfkill name (%s/%d)", strerror(errno), errno);
+	    goto out;
     }
 
     /* read name */
     memset(sysname, 0, sizeof(sysname));
     if (read(fd_name, sysname, sizeof(sysname) - 1) < 0) {
-	WARN("Failed to read rfkill name (%s/%d)", strerror(errno), errno);
-	goto out;
+	    WARN("Failed to read rfkill name (%s/%d)", strerror(errno), errno);
+	    goto out;
     }
 
     /* based on chip read its config file, if any, and define the hciattach utility used to dowload the patch */
-    if (!strncmp(BCM_RFKILL_NAME, sysname, sizeof(BCM_RFKILL_NAME))) {
-	read_config(config_file);
-	snprintf(hciattach, sizeof(hciattach), patcher_impl[main_opts.patcher].name);
-	type = BT_PWR;
+    if (!strncmp(main_opts.pwr_rfkill_name, sysname, strlen(main_opts.pwr_rfkill_name))) {
+        DEBUG("Use %s power rfkill switch", sysname);
+        if(main_opts.use_prepatcher) {
+            snprintf(prepatcher, sizeof(prepatcher), patcher_impl[main_opts.prepatcher].name);
+        }
+
+	    snprintf(hciattach, sizeof(hciattach), patcher_impl[main_opts.patcher].name);
+	    type = BT_PWR;
     } else if (g_str_has_prefix(sysname, "hci")) {
-	type = BT_HCI;
+	    type = BT_HCI;
     } else {
-	DEBUG("Skipping over unsupported rfkill switch '%s'", sysname);
-	goto out;
+	    DEBUG("Skipping over unsupported rfkill switch '%s' (expected '%s')", sysname, main_opts.pwr_rfkill_name);
+	    goto out;
     }
 
     DEBUG("Recording rfkill switch %d into hash", event->idx);
@@ -1082,7 +1181,7 @@ static int rfkill_switch_add(struct rfkill_event *event)
     s->name = g_strdup(sysname);
     s->type = type;
     if (type == BT_HCI) {
-	s->hci.dev_id = atoi(sysname + 3);
+	    s->hci.dev_id = atoi(sysname + 3);
     }
     g_hash_table_replace(switch_hash, GINT_TO_POINTER(event->idx), s);
 
@@ -1181,11 +1280,15 @@ int main(int argc, char **argv)
               strerror(errno), errno);
     }
 
+    read_config(config_file);
+    INFO("Loading config file \"%s\" succeeded", config_file);
+
     memset(&p, 0, sizeof(p));
     p.fd = fd;
     p.events = POLLIN | POLLHUP;
 
     while (1) {
+        INFO("========== NEW LOOP ==========");
         n = poll(&p, 1, -1);
         if (n < 0) {
             FATAL("Failed to poll RFKILL control device (%s/%d)",
@@ -1220,8 +1323,8 @@ int main(int argc, char **argv)
         /* Read rfkill switch metadata on addition; no need to read it
 	   repeatedly on every change. */
         if (event.op == RFKILL_OP_ADD)
-	    if (rfkill_switch_add(&event) < 0)
-		continue;
+	        if (rfkill_switch_add(&event) < 0)
+		        continue;
 
 	s = g_hash_table_lookup(switch_hash, GINT_TO_POINTER(event.idx));
 	if (!s) {
@@ -1234,31 +1337,31 @@ int main(int argc, char **argv)
         case RFKILL_OP_CHANGE_ALL:
         case RFKILL_OP_ADD:
             if (event.soft == 0 && event.hard == 0)
-	    {
+	        {
                 if (s->type == BT_PWR)
                 {
                     /* if unblock is for power interface: download patch and eventually register hci device */
-		    INFO("BT power driver unblocked");
+		            INFO("BT power driver unblocked");
                     free_hci();
                     attach_hci();
                     /* force to unblock also the bluetooth hci rfkill interface if hci device was registered */
                     if (hci_dev_registered)
                         rfkill_bluetooth_unblock();
-		    INFO("BT enabled");
+		            INFO("BT enabled");
                 }
                 else if (s->type == BT_HCI && hci_dev_registered)
                 {
                     /* wait unblock on hci bluetooth interface and force device UP */
-		    if (main_opts.up_hci)
-			up_hci(s->hci.dev_id);
+		            if (main_opts.up_hci)
+			            up_hci(s->hci.dev_id);
                 }
             }
             else if (s->type == BT_PWR && hci_dev_registered)
             {
                 /* for a block event on power interface force unblock of hci device interface */
-		INFO("BT power driver blocked");
+		        INFO("BT power driver blocked");
                 free_hci();
-		INFO("BT disabled");
+		        INFO("BT disabled");
             }
 
         break;
