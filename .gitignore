@@ -1,0 +1,6 @@
+bluetooth-rfkill-event/.vscode/settings.json
+bluetooth-rfkill-event/bluetooth_rfkill_event.c
+.vscode/c_cpp_properties.json
+.vscode/settings.json
+bluetooth-rfkill-event/*.o
+bluetooth-rfkill-event/bluetooth_rfkill_event
