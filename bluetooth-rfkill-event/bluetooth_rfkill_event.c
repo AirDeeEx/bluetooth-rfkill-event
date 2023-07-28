@@ -119,9 +119,9 @@ struct rfkill_switch {
     gchar *name;
     enum rfkill_switch_type type;
     union {
-	struct {
-	    int dev_id;
-	} hci;
+        struct {
+            int dev_id;
+        } hci;
     };
 };
 
@@ -263,45 +263,45 @@ static void bt_log(int level, const char *format, ...)
 
 static void random_default_bdaddr(void)
 {
-	union {
-		unsigned char c[6];
-		unsigned int i[2];
-	} data;
-	int fd = -1;
+    union {
+        unsigned char c[6];
+        unsigned int i[2];
+    } data;
+    int fd = -1;
 
-	fd = open("/dev/random", O_RDONLY);
-	if (fd < 0) {
-		WARN("Cannot open /dev/random: %s (%d)",
-			strerror(errno), errno);
-		goto failed;
-	}
+    fd = open("/dev/random", O_RDONLY);
+    if (fd < 0) {
+        WARN("Cannot open /dev/random: %s (%d)",
+            strerror(errno), errno);
+        goto failed;
+    }
 
-	if (read(fd, data.c, 6) != 6) {
-		WARN("Cannot read /dev/random: %s (%d)",
-			errno ? strerror(errno) : "no errno", errno);
-		goto failed;
-	}
+    if (read(fd, data.c, 6) != 6) {
+        WARN("Cannot read /dev/random: %s (%d)",
+            errno ? strerror(errno) : "no errno", errno);
+        goto failed;
+    }
 
-	goto out;
+    goto out;
 
 failed:
-	/* Fallback */
-	srand(time(NULL));
-	data.i[0] = rand();
-	data.i[1] = rand();
+    /* Fallback */
+    srand(time(NULL));
+    data.i[0] = rand();
+    data.i[1] = rand();
 
 out:
-	if (fd >= 0)
-		close(fd);
+    if (fd >= 0)
+        close(fd);
 
-	/* Make sure we're not using reserved LAP, see Baseband spec */
-	if (data.c[3] == 0x9e && data.c[4] == 0x8b && data.c[5] < 0x40)
-		data.c[5] += 0x40;
+    /* Make sure we're not using reserved LAP, see Baseband spec */
+    if (data.c[3] == 0x9e && data.c[4] == 0x8b && data.c[5] < 0x40)
+        data.c[5] += 0x40;
 
-	snprintf(default_bd_addr, sizeof(default_bd_addr),
-			"%02x:%02x:%02x:%02x:%02x:%02x",
-			data.c[0], data.c[1], data.c[2],
-			data.c[3], data.c[4], data.c[5]);
+    snprintf(default_bd_addr, sizeof(default_bd_addr),
+            "%02x:%02x:%02x:%02x:%02x:%02x",
+            data.c[0], data.c[1], data.c[2],
+            data.c[3], data.c[4], data.c[5]);
 }
 
 static void switch_free(gpointer data)
@@ -345,10 +345,10 @@ static int terminate(pid_t pid)
     int r = W_EXITCODE(EXIT_FAILURE, 0);
 
     if (kill(pid, SIGKILL) < 0) {
-	WARN("Cannot kill pid %d: %s(%d)", pid, strerror(errno), errno);
+        WARN("Cannot kill pid %d: %s(%d)", pid, strerror(errno), errno);
     } else {
-	DEBUG("Marking pid %d as killed.", pid);
-	r = W_EXITCODE(0, SIGKILL);
+        DEBUG("Marking pid %d as killed.", pid);
+        r = W_EXITCODE(0, SIGKILL);
     }
 
     return r;
@@ -357,7 +357,7 @@ static int terminate(pid_t pid)
 static int system_timeout(char *cmd)
 {
     int pipes[3][2]  = {
-	{ -1, -1 }, { -1, -1 }, { -1, -1 }
+        { -1, -1 }, { -1, -1 }, { -1, -1 }
     };
     int i, j;
     pid_t child;
@@ -366,172 +366,173 @@ static int system_timeout(char *cmd)
     DEBUG("command %s timeout %d", cmd, main_opts.exec_timeout);
 
     if (pipe(pipes[0]) < 0 ||
-	pipe(pipes[1]) < 0 ||
-	pipe(pipes[2]) < 0) {
-	WARN("Can't create pipes for child process communication: %s(%d)",
-	     strerror(errno), errno);
-	goto out;
+    pipe(pipes[1]) < 0 ||
+    pipe(pipes[2]) < 0) {
+    WARN("Can't create pipes for child process communication: %s(%d)",
+         strerror(errno), errno);
+    goto out;
     }
 
     for (i = 0; i < 3; i++) {
-	for (j = 0; j < 2; j++) {
-	    int flags = fcntl(pipes[i][j], F_GETFL, 0);
-	    if (flags < 0 ||
-		fcntl(pipes[i][j], F_SETFL, flags | O_NONBLOCK) < 0) {
-		WARN("Can't set pipes non-blocking: %s(%d)",
-		     strerror(errno), errno);
-		goto out;
-	    }
-	}
+        for (j = 0; j < 2; j++) {
+            int flags = fcntl(pipes[i][j], F_GETFL, 0);
+            if (flags < 0 ||
+            fcntl(pipes[i][j], F_SETFL, flags | O_NONBLOCK) < 0) {
+            WARN("Can't set pipes non-blocking: %s(%d)",
+                strerror(errno), errno);
+            goto out;
+            }
+        }
     }
 
     child = fork();
     if (child < 0) {
-	WARN("Can't create child process: %s(%d)", strerror(errno), errno);
-	goto out;
-
+        WARN("Can't create child process: %s(%d)", strerror(errno), errno);
+        goto out;
     } else if (child == 0) {
-	char *argv[4] = {
-	    "/bin/sh",
-	    "-c",
-	    cmd,
-	    NULL
-	};
+        char *argv[4] = {
+            "/bin/sh",
+            "-c",
+            cmd,
+            NULL
+        };
 
-	close(pipes[0][PIPE_WRITE]);
-	close(pipes[1][PIPE_READ]);
-	close(pipes[2][PIPE_READ]);
+        close(pipes[0][PIPE_WRITE]);
+        close(pipes[1][PIPE_READ]);
+        close(pipes[2][PIPE_READ]);
 
-	if (dup2(pipes[0][PIPE_READ], 0) < 0 ||
-	    dup2(pipes[1][PIPE_WRITE], 1) < 0 ||
-	    dup2(pipes[2][PIPE_WRITE], 2) < 0) {
-	    WARN("Can't set up stdio in child process: %s(%d)",
-		 strerror(errno), errno);
-	    exit(EXIT_FAILURE);
-	}
+        if (dup2(pipes[0][PIPE_READ], 0) < 0 ||
+            dup2(pipes[1][PIPE_WRITE], 1) < 0 ||
+            dup2(pipes[2][PIPE_WRITE], 2) < 0) {
+            WARN("Can't set up stdio in child process: %s(%d)",
+            strerror(errno), errno);
+            exit(EXIT_FAILURE);
+        }
 
-	if (execv("/bin/sh", argv) < 0) {
-	    WARN("Can't execute command '%s': %s(%d)",
-		 cmd, strerror(errno), errno);
-	    exit(EXIT_FAILURE);
-	}
+        if (execv("/bin/sh", argv) < 0) {
+            WARN("Can't execute command '%s': %s(%d)",
+            cmd, strerror(errno), errno);
+            exit(EXIT_FAILURE);
+        }
 
-	/* NOTREACHED -- execv won't return on success */
+        /* NOTREACHED -- execv won't return on success */
 
     } else {
-	struct timeval stop;
+        struct timeval stop;
 
-	DEBUG("Forked child process %d", child);
+        DEBUG("Forked child process %d", child);
 
-	close(pipes[0][PIPE_READ]);
-	close(pipes[1][PIPE_WRITE]);
-	close(pipes[2][PIPE_WRITE]);
-	pipes[0][PIPE_READ] = pipes[1][PIPE_WRITE] = pipes[2][PIPE_WRITE] = -1;
+        close(pipes[0][PIPE_READ]);
+        close(pipes[1][PIPE_WRITE]);
+        close(pipes[2][PIPE_WRITE]);
+        pipes[0][PIPE_READ] = pipes[1][PIPE_WRITE] = pipes[2][PIPE_WRITE] = -1;
 
-	if (main_opts.exec_timeout) {
-	    gettimeofday(&stop, NULL);
-	    stop.tv_sec += main_opts.exec_timeout;
-	}
+        if (main_opts.exec_timeout) {
+            gettimeofday(&stop, NULL);
+            stop.tv_sec += main_opts.exec_timeout;
+        }
 
-	while(1) {
-	    struct timeval now;
-	    struct timeval delay;
-	    fd_set readfds;
-	    char buf[PIPE_BUF];
-	    int n, status;
-	    int maxfd = -1;
+        while(1) {
+            struct timeval now;
+            struct timeval delay;
+            fd_set readfds;
+            char buf[PIPE_BUF];
+            int n, status;
+            int maxfd = -1;
 
-	    if (main_opts.exec_timeout) {
-		gettimeofday(&now, NULL);
-		if (now.tv_sec > stop.tv_sec ||
-		    (now.tv_sec == stop.tv_sec && now.tv_usec > stop.tv_usec)) {
-		    WARN("Command %s (pid %d) timeout exceeded, killing it.",
-			 cmd, child);
-		    r = terminate(child);
-		    goto out;
-		}
-	    }
+            if (main_opts.exec_timeout) {
+                gettimeofday(&now, NULL);
+                if (now.tv_sec > stop.tv_sec ||
+                    (now.tv_sec == stop.tv_sec && now.tv_usec > stop.tv_usec)) {
+                    WARN("Command %s (pid %d) timeout exceeded, killing it.",
+                    cmd, child);
+                    r = terminate(child);
+                    goto out;
+                }
+            }
 
-	    FD_ZERO(&readfds);
-	    if (pipes[1][PIPE_READ] >= 0) {
-		maxfd = MAX(maxfd, pipes[1][PIPE_READ]);
-		FD_SET(pipes[1][PIPE_READ], &readfds);
-	    }
-	    if (pipes[2][PIPE_READ] >= 0) {
-		maxfd = MAX(maxfd, pipes[2][PIPE_READ]);
-		FD_SET(pipes[2][PIPE_READ], &readfds);
-	    }
+            FD_ZERO(&readfds);
+            if (pipes[1][PIPE_READ] >= 0) {
+                maxfd = MAX(maxfd, pipes[1][PIPE_READ]);
+                FD_SET(pipes[1][PIPE_READ], &readfds);
+            }
+            if (pipes[2][PIPE_READ] >= 0) {
+                maxfd = MAX(maxfd, pipes[2][PIPE_READ]);
+                FD_SET(pipes[2][PIPE_READ], &readfds);
+            }
 
-	    if (main_opts.exec_timeout) {
-		unsigned long long delay_usec =
-		    1000000*stop.tv_sec + stop.tv_usec -
-		    1000000*now.tv_sec - now.tv_usec;
-		if (delay_usec > 1000000)
-		    delay_usec = 1000000;
-		delay.tv_sec = delay_usec/1000000;
-		delay.tv_usec = delay_usec%1000000;
-	    } else {
-		delay.tv_sec = 1;
-		delay.tv_usec = 0;
-	    }
+            if (main_opts.exec_timeout) {
+                unsigned long long delay_usec =
+                    1000000*stop.tv_sec + stop.tv_usec -
+                    1000000*now.tv_sec - now.tv_usec;
 
-	    switch (select(maxfd + 1, &readfds, NULL, NULL, &delay)) {
+                if (delay_usec > 1000000)
+                    delay_usec = 1000000;
 
-	    case -1:
-		WARN("Error while waiting for pid %d: %s(%d)",
-		     child, strerror(errno), errno);
-		r = terminate(child);
-		goto out;
+                delay.tv_sec = delay_usec/1000000;
+                delay.tv_usec = delay_usec%1000000;
+            } else {
+                delay.tv_sec = 1;
+                delay.tv_usec = 0;
+            }
 
-	    case 0:
-		break;
+            switch (select(maxfd + 1, &readfds, NULL, NULL, &delay)) {
 
-	    default:
-		if (FD_ISSET(pipes[1][PIPE_READ], &readfds)) {
-		    n = read(pipes[1][PIPE_READ], buf, PIPE_BUF);
-		    if (n > 0)
-			DEBUG("pid %d: %.*s", child, n, buf);
-		    else if (n == 0) {
-			DEBUG("pid %d stdout end of file", child);
-			close(pipes[1][PIPE_READ]);
-			pipes[1][PIPE_READ] = -1;
-		    }
-		}
+            case -1:
+            WARN("Error while waiting for pid %d: %s(%d)",
+                child, strerror(errno), errno);
+            r = terminate(child);
+            goto out;
 
-		if (FD_ISSET(pipes[2][PIPE_READ], &readfds)) {
-		    n = read(pipes[2][PIPE_READ], buf, PIPE_BUF);
-		    if (n > 0)
-			DEBUG("pid %d: %.*s", child, n, buf);
-		    else if (n == 0) {
-			DEBUG("pid %d stderr end of file", child);
-			close(pipes[2][PIPE_READ]);
-			pipes[2][PIPE_READ] = -1;
-		    }
-		}
-	    }
+            case 0:
+            break;
 
-	    if (waitpid(child, &status, WNOHANG) == child) {
-		DEBUG("Child %d status changed.", child);
+            default:
+            if (FD_ISSET(pipes[1][PIPE_READ], &readfds)) {
+                n = read(pipes[1][PIPE_READ], buf, PIPE_BUF);
+                if (n > 0)
+                DEBUG("pid %d: %.*s", child, n, buf);
+                else if (n == 0) {
+                DEBUG("pid %d stdout end of file", child);
+                close(pipes[1][PIPE_READ]);
+                pipes[1][PIPE_READ] = -1;
+                }
+            }
 
-		if (WIFEXITED(status)) {
-		    DEBUG("Child %d exited %ssuccessfully", child,
-			  WEXITSTATUS(status) ? "un" : "");
-		} else if (WIFSIGNALED(status)) {
-		    DEBUG("Child %d terminated with signal %d",
-			  child, WTERMSIG(status));
-		}
+            if (FD_ISSET(pipes[2][PIPE_READ], &readfds)) {
+                n = read(pipes[2][PIPE_READ], buf, PIPE_BUF);
+                if (n > 0)
+                DEBUG("pid %d: %.*s", child, n, buf);
+                else if (n == 0) {
+                DEBUG("pid %d stderr end of file", child);
+                close(pipes[2][PIPE_READ]);
+                pipes[2][PIPE_READ] = -1;
+                }
+            }
+            }
 
-		r = status;
-		goto out;
-	    }
-	}
+            if (waitpid(child, &status, WNOHANG) == child) {
+            DEBUG("Child %d status changed.", child);
+
+            if (WIFEXITED(status)) {
+                DEBUG("Child %d exited %ssuccessfully", child,
+                WEXITSTATUS(status) ? "un" : "");
+            } else if (WIFSIGNALED(status)) {
+                DEBUG("Child %d terminated with signal %d",
+                child, WTERMSIG(status));
+            }
+
+            r = status;
+            goto out;
+            }
+        }
     }
 
 out:
     for (i = 0; i < 3; i++)
-	for (j = 0; j < 2; j++)
-	    if (pipes[i][j] >= 0)
-		close(pipes[i][j]);
+    for (j = 0; j < 2; j++)
+        if (pipes[i][j] >= 0)
+            close(pipes[i][j]);
 
     return r;
 }
@@ -785,7 +786,7 @@ void parse_config(GKeyFile *config)
     str = g_key_file_get_string(config, "General", "bdaddr", &err);
     if (err) {
         g_clear_error(&err);
-	g_free(main_opts.bdaddr_file);
+        g_free(main_opts.bdaddr_file);
         main_opts.bdaddr_file = NULL;
     } else {
         g_free(main_opts.bdaddr_file);
@@ -862,17 +863,12 @@ void load_bd_add(void)
     FILE *fp;
     int ret;
 
-    fp = fopen(main_opts.bdaddr_file
-	       ? main_opts.bdaddr_file
-	       : BD_ADD_FACTORY_FILE, "r");
+    fp = fopen(main_opts.bdaddr_file ? main_opts.bdaddr_file : BD_ADD_FACTORY_FILE, "r");
 
     /* if BD add file has not been provisioned use default one */
     if (fp == NULL)
     {
-	WARN("Can't open Bluetooth address file %s",
-	      main_opts.bdaddr_file
-	      ? main_opts.bdaddr_file
-	      : BD_ADD_FACTORY_FILE);
+        WARN("Can't open Bluetooth address file %s", main_opts.bdaddr_file ? main_opts.bdaddr_file : BD_ADD_FACTORY_FILE);
 
         memcpy(factory_bd_add, default_bd_addr, sizeof(factory_bd_add));
         main_opts.bd_add = factory_bd_add;
@@ -1045,7 +1041,7 @@ void up_hci(int hci_idx)
 
     for (i = 0;  i < MAX_RETRY; i++)
     {
-	DEBUG("Checking %d/%d", i+1, MAX_RETRY);
+        DEBUG("Checking %d/%d", i+1, MAX_RETRY);
 
         if (ioctl(sk, HCIGETDEVINFO, (void *) &hci_info) < 0)
         {
@@ -1058,20 +1054,20 @@ void up_hci(int hci_idx)
 
         if (hci_test_bit(HCI_RUNNING, &hci_info.flags) && !hci_test_bit(HCI_INIT, &hci_info.flags))
         {
-	    DEBUG("HCI device %d running and initialized", hci_idx);
+            DEBUG("HCI device %d running and initialized", hci_idx);
 
             /* check if kernel has already set device UP... */
             if (!hci_test_bit(HCI_UP, &hci_info.flags))
             {
-		struct hci_dev_req dev_req;
+                struct hci_dev_req dev_req;
 
-		DEBUG("HCI device %d not yet up", hci_idx);
+                DEBUG("HCI device %d not yet up", hci_idx);
 
-		dev_req.dev_id = hci_idx;
-		dev_req.dev_opt = HCI_LM_ACCEPT;
-		if (ioctl(sk, HCISETLINKMODE, (unsigned long) &dev_req) < 0) {
-		    ERROR("Failed to set hci device %d link mode", hci_idx);
-		}
+                dev_req.dev_id = hci_idx;
+                dev_req.dev_opt = HCI_LM_ACCEPT;
+                if (ioctl(sk, HCISETLINKMODE, (unsigned long) &dev_req) < 0) {
+                    ERROR("Failed to set hci device %d link mode", hci_idx);
+                }
 
                 if (ioctl(sk, HCIDEVUP, hci_idx) < 0)
                 {
@@ -1083,10 +1079,11 @@ void up_hci(int hci_idx)
                           hci_idx, strerror(errno), errno);
                 }
 
-		DEBUG("HCI device %d set up", hci_idx);
+                DEBUG("HCI device %d set up", hci_idx);
 
-            } else
-		DEBUG("HCI device %d already up", hci_idx);
+            } else {
+                DEBUG("HCI device %d already up", hci_idx);
+            }
 
             break;
         }
@@ -1144,20 +1141,19 @@ static int rfkill_switch_add(struct rfkill_event *event)
        when we get here */
 
     /* get the name to check the bt chip */
-    snprintf(sysname, sizeof(sysname), "/sys/class/rfkill/rfkill%u/name",
-	     event->idx);
+    snprintf(sysname, sizeof(sysname), "/sys/class/rfkill/rfkill%u/name", event->idx);
 
     fd_name = open(sysname, O_RDONLY);
     if (fd_name < 0) {
         WARN("Failed to open rfkill name (%s/%d)", strerror(errno), errno);
-	    goto out;
+        goto out;
     }
 
     /* read name */
     memset(sysname, 0, sizeof(sysname));
     if (read(fd_name, sysname, sizeof(sysname) - 1) < 0) {
-	    WARN("Failed to read rfkill name (%s/%d)", strerror(errno), errno);
-	    goto out;
+        WARN("Failed to read rfkill name (%s/%d)", strerror(errno), errno);
+        goto out;
     }
 
     /* based on chip read its config file, if any, and define the hciattach utility used to dowload the patch */
@@ -1167,13 +1163,13 @@ static int rfkill_switch_add(struct rfkill_event *event)
             snprintf(prepatcher, sizeof(prepatcher), patcher_impl[main_opts.prepatcher].name);
         }
 
-	    snprintf(hciattach, sizeof(hciattach), patcher_impl[main_opts.patcher].name);
-	    type = BT_PWR;
+        snprintf(hciattach, sizeof(hciattach), patcher_impl[main_opts.patcher].name);
+        type = BT_PWR;
     } else if (g_str_has_prefix(sysname, "hci")) {
-	    type = BT_HCI;
+        type = BT_HCI;
     } else {
-	    DEBUG("Skipping over unsupported rfkill switch '%s' (expected '%s')", sysname, main_opts.pwr_rfkill_name);
-	    goto out;
+        DEBUG("Skipping over unsupported rfkill switch '%s' (expected '%s')", sysname, main_opts.pwr_rfkill_name);
+        goto out;
     }
 
     DEBUG("Recording rfkill switch %d into hash", event->idx);
@@ -1181,7 +1177,7 @@ static int rfkill_switch_add(struct rfkill_event *event)
     s->name = g_strdup(sysname);
     s->type = type;
     if (type == BT_HCI) {
-	    s->hci.dev_id = atoi(sysname + 3);
+        s->hci.dev_id = atoi(sysname + 3);
     }
     g_hash_table_replace(switch_hash, GINT_TO_POINTER(event->idx), s);
 
@@ -1189,7 +1185,7 @@ static int rfkill_switch_add(struct rfkill_event *event)
 
 out:
     if (fd_name >= 0)
-	close(fd_name);
+        close(fd_name);
 
     return r;
 }
@@ -1202,8 +1198,7 @@ int main(int argc, char **argv)
     int fd, n;
     struct rfkill_switch *s = NULL;
 
-    switch_hash = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL,
-					switch_free);
+    switch_hash = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, switch_free);
 
     opterr = 0;
     while (1) {
@@ -1288,7 +1283,6 @@ int main(int argc, char **argv)
     p.events = POLLIN | POLLHUP;
 
     while (1) {
-        INFO("========== NEW LOOP ==========");
         n = poll(&p, 1, -1);
         if (n < 0) {
             FATAL("Failed to poll RFKILL control device (%s/%d)",
@@ -1321,47 +1315,47 @@ int main(int argc, char **argv)
               op2string(event.op), event.op, event.soft, event.hard);
 
         /* Read rfkill switch metadata on addition; no need to read it
-	   repeatedly on every change. */
+       repeatedly on every change. */
         if (event.op == RFKILL_OP_ADD)
-	        if (rfkill_switch_add(&event) < 0)
-		        continue;
+            if (rfkill_switch_add(&event) < 0)
+                continue;
 
-	s = g_hash_table_lookup(switch_hash, GINT_TO_POINTER(event.idx));
-	if (!s) {
-	    WARN("Unknown rfkill switch %d", event.idx);
-	    continue;
-	}
+        s = g_hash_table_lookup(switch_hash, GINT_TO_POINTER(event.idx));
+        if (!s) {
+            WARN("Unknown rfkill switch %d", event.idx);
+            continue;
+        }
 
         switch (event.op) {
         case RFKILL_OP_CHANGE:
         case RFKILL_OP_CHANGE_ALL:
         case RFKILL_OP_ADD:
             if (event.soft == 0 && event.hard == 0)
-	        {
+            {
                 if (s->type == BT_PWR)
                 {
                     /* if unblock is for power interface: download patch and eventually register hci device */
-		            INFO("BT power driver unblocked");
+                    INFO("BT power driver unblocked");
                     free_hci();
                     attach_hci();
                     /* force to unblock also the bluetooth hci rfkill interface if hci device was registered */
                     if (hci_dev_registered)
                         rfkill_bluetooth_unblock();
-		            INFO("BT enabled");
+                    INFO("BT enabled");
                 }
                 else if (s->type == BT_HCI && hci_dev_registered)
                 {
                     /* wait unblock on hci bluetooth interface and force device UP */
-		            if (main_opts.up_hci)
-			            up_hci(s->hci.dev_id);
+                    if (main_opts.up_hci)
+                        up_hci(s->hci.dev_id);
                 }
             }
             else if (s->type == BT_PWR && hci_dev_registered)
             {
                 /* for a block event on power interface force unblock of hci device interface */
-		        INFO("BT power driver blocked");
+                INFO("BT power driver blocked");
                 free_hci();
-		        INFO("BT disabled");
+                INFO("BT disabled");
             }
 
         break;
@@ -1369,14 +1363,13 @@ int main(int argc, char **argv)
             /* in case pwr rfkill interface is removed, unregister hci dev if it was registered */
             if (s->type == BT_PWR && hci_dev_registered)
                 free_hci();
-	    DEBUG("Removing rfkill switch %d from hash", event.idx);
-	    g_hash_table_remove(switch_hash, GINT_TO_POINTER(event.idx));
-	    break;
+            DEBUG("Removing rfkill switch %d from hash", event.idx);
+            g_hash_table_remove(switch_hash, GINT_TO_POINTER(event.idx));
+            break;
 
         default:
             continue;
         }
-
     }
 
     close(fd);
